@@ -7,44 +7,16 @@ from pyvisa import Resource
 from enum import Enum, IntEnum
 from typing import Tuple, Union, Optional, Dict
 
-# rm = pyvisa.ResourceManager()
-# my_instrument = rm.open_resource('USB0::0x0AAD::0x0197::5601.1414k03-100521::INSTR')
-
-# print(my_instrument.query('*IDN?'))
-# # 'INST OUT1; OUTP ON'
-# # 'INST OUT1; APPLY "6,2"'
-# my_instrument.write('INST OUT1; OUTP ON')
-
-# my_instrument.write('INST OUT1; OUTP?')
-# print(my_instrument.read())
-
-# my_instrument.write('INST OUT1; APPLY?')
-# # time.sleep(1)
-# print(my_instrument.read())
-
-# time.sleep(1)
-# my_instrument.write('INST OUT1; OUTP OFF')
-
-# my_instrument.write('INST OUT1; OUTP?')
-# print(my_instrument.read())
-
-
-# my_instrument.write('INST?')
-# print(my_instrument.read())
-
-
-# my_instrument.write('OUTP:GEN OFF')
-# # while True:
-# #     print(my_instrument.read_bytes(1))
-
 
 class CmdTypes(IntEnum):
-    SetVoltageAndCurrent = 0,
-    SetVolate = 1,
-    SetCurrent = 2,
-    GetVoltageAndCurrent = 3
-    GetVoltage = 4,
-    GetCurrent = 5
+    SET_VOLTAGE_AND_CURRENT = 0,
+    SET_VOLTAGE = 1,
+    SET_CURRENT = 2,
+    GET_VOLTAGE_AND_CURRENT = 3
+    GET_VOLTAGE = 4,
+    GET_CURRENT = 5
+    SET_SUPPLY = 6
+    DISABLE_SUPPLY = 7
 
 class Chanels(Enum):
     CH1 = "Chanel_1"
@@ -53,60 +25,79 @@ class Chanels(Enum):
 
 class ParamTypes(Enum):
     CHANEL_ID = "Id"
-    VOLTAGE = "Voltage" # 'INST OUT1; APPLY "6,2"'
-    CURRENT = "Current" # 'INST OUT1; APPLY "6,2"'
-    OUTPUT_STATE = "OutputState" # 'INST OUT1; OUTP ON'
+    VOLTAGE = "Voltage"
+    CURRENT = "Current"
+    OUTPUT_STATE = "OutputState"
+
+class SupplyStates(Enum):
+    ENABLE = "ON"
+    DISABLE = "OFF"
+
+class SetParamCmd:
+    chanel: int
+    voltage: int
+    current: int
+
+class SetSupplyCmd:
+    chanel: int
+    state: SupplyStates
 
 
 class RsNge100():
+    _USB_CONFIG = "config/usb.json"
+    _CONFIG = "config/rs_nge100.json"
+
     def __init__(self):
         self._cmd_templates = {
-            CmdTypes.SetVoltageAndCurrent: 'INST OUT{chanel}; APPLY "{vol}, {cur}"',
-            CmdTypes.SetVolate: 'INST OUT{chanel}; APPLY "{voltage},2"',
-            CmdTypes.SetCurrent: 'INST OUT{chanel}; APPLY "6,{cur}"',
-            CmdTypes.GetVoltageAndCurrent: 'INST OUT{chanel}; APPLY?',
+            CmdTypes.SET_VOLTAGE_AND_CURRENT: 'INST OUT{chanel}; APPLY "{vol}, {cur}"',
+            CmdTypes.SET_VOLTAGE: 'INST OUT{chanel}; APPLY "{voltage},2"',
+            CmdTypes.SET_CURRENT: 'INST OUT{chanel}; APPLY "6,{cur}"',
+            CmdTypes.GET_VOLTAGE_AND_CURRENT: 'INST OUT{chanel}; APPLY?',
+            CmdTypes.SET_SUPPLY: 'INST OUT{chanel}; OUTP {state}; OUTP:GEN {state}',
         }
         self._rm = pyvisa.ResourceManager()
         self._instr = self._init_instrument()
         self._config = self._init_params()
 
-    def set_parameter(self, chanel: Chanels, param: ParamTypes, value: int ) -> None:
-        cmd_type: Optional[CmdTypes] = None
 
+    def set_parameter(self, chanel: Chanels, param: ParamTypes, value: Union[int, float] ) -> None:
         self._config[chanel.value][param.value] = value
 
-        if param == ParamTypes.VOLTAGE or  param == ParamTypes.CURRENT:
-            cmd_type = CmdTypes.SetVoltageAndCurrent
-            
-        if cmd_type is not None:
-            packet = self._build(chanel, cmd_type)
+        cmd = SetParamCmd()
+        cmd.chanel = self._config[chanel.value][ParamTypes.CHANEL_ID.value]
+        cmd.voltage = self._config[chanel.value][ParamTypes.VOLTAGE.value]
+        cmd.current = self._config[chanel.value][ParamTypes.CURRENT.value]
 
+        packet = self._build(cmd)
         self._instr.write(packet)
-
         self._save_config()
 
-    def _build(self, chanel: Chanels, cmd: CmdTypes) -> Optional[str]:
-        'INST OUT{chanel}; OUTP ON'
+    def set_supply(self, chanel: Chanels, state: SupplyStates):
+        cmd = SetSupplyCmd()
+        cmd.chanel = self._config[chanel.value][ParamTypes.CHANEL_ID.value]
+        cmd.state = state.value
+
+        packet = self._build(cmd)
+        self._instr.write(packet)
+        self._save_config()
+
+    def _build(self, cmd: Union[SetParamCmd, SetSupplyCmd]) -> Optional[str]:
         temp: Optional[str] = None
         packet: Optional[str] = None
         
-        if cmd == CmdTypes.SetVolate or cmd == CmdTypes.SetCurrent or cmd == CmdTypes.SetVoltageAndCurrent:
-            temp = self._cmd_templates[CmdTypes.SetVoltageAndCurrent]
-            ch_config = self._config[chanel.value]
-            ch = ch_config[ParamTypes.CHANEL_ID.value]
-            voltage = ch_config[ParamTypes.VOLTAGE.value]
-            current = ch_config[ParamTypes.CURRENT.value]
-
-        if temp is not None:
-            packet = temp.format(chanel =ch, vol = voltage, cur = current)
+        if isinstance(cmd, SetParamCmd):
+            temp = self._cmd_templates[CmdTypes.SET_VOLTAGE_AND_CURRENT]
+            chanel = cmd.chanel
+            voltage = cmd.voltage
+            current = cmd.current
+            packet = temp.format(chanel =chanel, vol = voltage, cur = current)
+        elif isinstance(cmd, SetSupplyCmd):
+            temp = self._cmd_templates[CmdTypes.SET_SUPPLY]
+            chanel = cmd.chanel
+            state = cmd.state
+            packet = temp.format(chanel =chanel, state = state)
 
         return packet
-   
-    def enable(self):
-        pass
-
-    def disable(self):
-        pass
 
 
     def _init_instrument(self) -> Resource:
@@ -114,9 +105,8 @@ class RsNge100():
         return self._rm.open_resource(name)
 
 
-    def _init_resource_name(self) -> str:
-        filename = "config/usb.json"
-        usb_config = self._extract_data_from_file(filename)
+    def _init_resource_name(self) -> Optional[str]:
+        usb_config = self._extract_data_from_file(RsNge100._USB_CONFIG)
         vid = usb_config["VID"]
         pid = usb_config["PID"]
 
@@ -126,11 +116,10 @@ class RsNge100():
                 return name
 
         # Change to Exception
-        return False
+        return None
 
     def _init_params(self):
-        filename = "config/rs_nge100.json"
-        return self._extract_data_from_file(filename)
+        return self._extract_data_from_file(RsNge100._CONFIG)
         
 
     def _extract_data_from_file(self, filename: str, encoding: str = "utf8") -> Dict[str, str]:
@@ -148,17 +137,15 @@ class RsNge100():
             return config
 
     def _save_config(self):
-        with open("config/rs_nge100.json", 'w') as f:
+        with open(RsNge100._CONFIG, 'w') as f:
             json.dump(self._config, f)
 
 
 if __name__ == "__main__":
     rs = RsNge100()
-    rs.set_parameter(Chanels.CH1, ParamTypes.VOLTAGE, 5)
-    rs.set_parameter(Chanels.CH1, ParamTypes.CURRENT, 3)
+    rs.set_parameter(Chanels.CH1, ParamTypes.VOLTAGE, 27)
+    rs.set_parameter(Chanels.CH1, ParamTypes.CURRENT, 0.5)
 
-    rs.set_parameter(Chanels.CH2, ParamTypes.VOLTAGE, 10)
-
-
-    rs.set_parameter(Chanels.CH3, ParamTypes.VOLTAGE, 20)
-    rs.set_parameter(Chanels.CH3, ParamTypes.CURRENT, 0.5)
+    rs.set_supply(Chanels.CH1, SupplyStates.ENABLE)
+    time.sleep(5)
+    rs.set_supply(Chanels.CH1, SupplyStates.DISABLE)
