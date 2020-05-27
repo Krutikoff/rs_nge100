@@ -1,0 +1,20 @@
+{
+    "Chanel_1": {
+        "Id": 1,
+        "Voltage": 5,
+        "Current": 3,
+        "OutputState": "ON"
+    },
+    "Chanel_2": {
+        "Id": 2,
+        "Voltage": 10,
+        "Current": "3",
+        "OutputState": "ON"
+    },
+    "Chanel_3": {
+        "Id": 3,
+        "Voltage": 20,
+        "Current": 0.5,
+        "OutputState": "ON"
+    }
+}
