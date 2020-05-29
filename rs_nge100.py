@@ -1,27 +1,29 @@
-
 import pyvisa
 import time
 import json
-import re
+import os
+import pathlib
 from pyvisa import Resource
-from enum import Enum, IntEnum
-from typing import Tuple, Union, Optional, Dict
+from enum import IntEnum, Enum
+from typing import Union, Optional, Dict
 
 
 class CmdTypes(IntEnum):
-    SET_VOLTAGE_AND_CURRENT = 0,
-    SET_VOLTAGE = 1,
-    SET_CURRENT = 2,
+    SET_VOLTAGE_AND_CURRENT = (0,)
+    SET_VOLTAGE = (1,)
+    SET_CURRENT = (2,)
     GET_VOLTAGE_AND_CURRENT = 3
-    GET_VOLTAGE = 4,
+    GET_VOLTAGE = (4,)
     GET_CURRENT = 5
     SET_SUPPLY = 6
     DISABLE_SUPPLY = 7
+
 
 class Chanels(Enum):
     CH1 = "Chanel_1"
     CH2 = "Chanel_2"
     CH3 = "Chanel_3"
+
 
 class ParamTypes(Enum):
     CHANEL_ID = "Id"
@@ -29,14 +31,17 @@ class ParamTypes(Enum):
     CURRENT = "Current"
     OUTPUT_STATE = "OutputState"
 
+
 class SupplyStates(Enum):
     ENABLE = "ON"
     DISABLE = "OFF"
+
 
 class SetParamCmd:
     chanel: int
     voltage: int
     current: int
+
 
 class SetSupplyCmd:
     chanel: int
@@ -52,15 +57,16 @@ class RsNge100():
             CmdTypes.SET_VOLTAGE_AND_CURRENT: 'INST OUT{chanel}; APPLY "{vol}, {cur}"',
             CmdTypes.SET_VOLTAGE: 'INST OUT{chanel}; APPLY "{voltage},2"',
             CmdTypes.SET_CURRENT: 'INST OUT{chanel}; APPLY "6,{cur}"',
-            CmdTypes.GET_VOLTAGE_AND_CURRENT: 'INST OUT{chanel}; APPLY?',
-            CmdTypes.SET_SUPPLY: 'INST OUT{chanel}; OUTP {state}; OUTP:GEN {state}',
+            CmdTypes.GET_VOLTAGE_AND_CURRENT: "INST OUT{chanel}; APPLY?",
+            CmdTypes.SET_SUPPLY: "INST OUT{chanel}; OUTP {state}; OUTP:GEN {state}",
         }
         self._rm = pyvisa.ResourceManager()
         self._instr = self._init_instrument()
         self._config = self._init_params()
 
-
-    def set_parameter(self, chanel: Chanels, param: ParamTypes, value: Union[int, float] ) -> None:
+    def set_parameter(
+        self, chanel: Chanels, param: ParamTypes, value: Union[int, float]
+    ) -> None:
         self._config[chanel.value][param.value] = value
 
         cmd = SetParamCmd()
@@ -84,26 +90,24 @@ class RsNge100():
     def _build(self, cmd: Union[SetParamCmd, SetSupplyCmd]) -> Optional[str]:
         temp: Optional[str] = None
         packet: Optional[str] = None
-        
+
         if isinstance(cmd, SetParamCmd):
             temp = self._cmd_templates[CmdTypes.SET_VOLTAGE_AND_CURRENT]
             chanel = cmd.chanel
             voltage = cmd.voltage
             current = cmd.current
-            packet = temp.format(chanel =chanel, vol = voltage, cur = current)
+            packet = temp.format(chanel=chanel, vol=voltage, cur=current)
         elif isinstance(cmd, SetSupplyCmd):
             temp = self._cmd_templates[CmdTypes.SET_SUPPLY]
             chanel = cmd.chanel
             state = cmd.state
-            packet = temp.format(chanel =chanel, state = state)
+            packet = temp.format(chanel=chanel, state=state)
 
         return packet
-
 
     def _init_instrument(self) -> Resource:
         name = self._init_resource_name()
         return self._rm.open_resource(name)
-
 
     def _init_resource_name(self) -> Optional[str]:
         usb_config = self._extract_data_from_file(RsNge100._USB_CONFIG)
@@ -120,9 +124,10 @@ class RsNge100():
 
     def _init_params(self):
         return self._extract_data_from_file(RsNge100._CONFIG)
-        
 
-    def _extract_data_from_file(self, filename: str, encoding: str = "utf8") -> Dict[str, str]:
+    def _extract_data_from_file(
+        self, filename: str, encoding: str = "utf8"
+    ) -> Dict[str, str]:
         """Extract data from filename
 
         Args:
@@ -131,13 +136,13 @@ class RsNge100():
 
         Returns:
             Dict[str, str]: [description]
-        """        
+        """
         with open(filename, encoding=encoding) as f:
             config = json.load(f)
             return config
 
     def _save_config(self):
-        with open(RsNge100._CONFIG, 'w') as f:
+        with open(RsNge100._CONFIG, "w") as f:
             json.dump(self._config, f)
 
 
