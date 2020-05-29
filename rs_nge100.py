@@ -48,9 +48,9 @@ class SetSupplyCmd:
     state: SupplyStates
 
 
-class RsNge100():
-    _USB_CONFIG = "config/usb.json"
-    _CONFIG = "config/rs_nge100.json"
+class RsNge100:
+    _USB_CONFIG = "F:/Python/rs_nge100/config/usb.json"
+    _CONFIG = "F:/Python/rs_nge100/config/rs_nge100.json"
 
     def __init__(self):
         self._cmd_templates = {
